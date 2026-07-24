@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GlitrAI Mini Content Engine</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; background: #f7f7f8; }
+  h1 { font-size: 22px; }
+  form { background: white; padding: 20px; border-radius: 8px; margin-bottom: 30px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  input, textarea { width: 100%; padding: 8px; margin: 6px 0 14px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+  button { background: #333; color: white; border: none; padding: 10px 18px; border-radius: 4px; cursor: pointer; }
+  button:hover { background: #555; }
+  .job { background: white; padding: 14px; border-radius: 8px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .job img { max-width: 200px; display: block; margin-top: 8px; border-radius: 6px; }
+  .status { font-weight: bold; }
+  .status-completed { color: green; }
+  .status-processing, .status-pending { color: orange; }
+  .status-failed { color: red; }
+</style>
+</head>
+<body>
+
+<h1>GlitrAI Mini Content Engine</h1>
+
+<form id="generateForm">
+  <label>Product Name</label>
+  <input type="text" id="product_name" required>
+
+  <label>Short Description</label>
+  <textarea id="description" rows="3" required></textarea>
+
+  <button type="submit">Generate</button>
+</form>
+
+<h2>Jobs</h2>
+<div id="jobsList">Loading...</div>
+
+<script>
+async function fetchJobs() {
+  const res = await fetch('/jobs');
+  const jobs = await res.json();
+  const container = document.getElementById('jobsList');
+
+  if (jobs.length === 0) {
+    container.innerHTML = "<p>No jobs yet.</p>";
+    return;
+  }
+
+  container.innerHTML = jobs.map(job => `
+    <div class="job">
+      <strong>${job.product_name}</strong><br>
+      <span class="status status-${job.status}">${job.status}</span>
+      ${job.prompt ? `<p><em>Prompt: ${job.prompt}</em></p>` : ''}
+      ${job.image_url ? `<img src="${job.image_url}" alt="result">` : ''}
+    </div>
+  `).join('');
+}
+
+document.getElementById('generateForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const product_name = document.getElementById('product_name').value;
+  const description = document.getElementById('description').value;
+
+  await fetch('/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ product_name, description })
+  });
+
+  document.getElementById('generateForm').reset();
+  fetchJobs();
+});
+
+fetchJobs();
+setInterval(fetchJobs, 3000);
+</script>
+
+</body>
+</html>
