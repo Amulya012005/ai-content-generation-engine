@@ -17,6 +17,7 @@ executor = ThreadPoolExecutor(max_workers=4)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
 
 
 def get_db():
@@ -52,7 +53,7 @@ def generate_prompt_with_llm(product_name, description):
         "Content-Type": "application/json"
     }
     payload = {
-        "model": "llama-3.1-8b-instant",
+        "model": GROQ_MODEL,
         "messages": [
             {
                 "role": "system",
