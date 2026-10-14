@@ -2,78 +2,243 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>AI Content Generation Engine</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProductPix: AI Product Image Generator</title>
 <style>
-  body { font-family: Arial, sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; background: #f7f7f8; }
-  h1 { font-size: 22px; }
-  form { background: white; padding: 20px; border-radius: 8px; margin-bottom: 30px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-  input, textarea { width: 100%; padding: 8px; margin: 6px 0 14px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-  button { background: #333; color: white; border: none; padding: 10px 18px; border-radius: 4px; cursor: pointer; }
-  button:hover { background: #555; }
-  .job { background: white; padding: 14px; border-radius: 8px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-  .job img { max-width: 200px; display: block; margin-top: 8px; border-radius: 6px; }
-  .status { font-weight: bold; }
-  .status-completed { color: green; }
-  .status-processing, .status-pending { color: orange; }
-  .status-failed { color: red; }
+  :root {
+    --bg: #f4f6fb; --card: #ffffff; --text: #1b2437; --muted: #5d6b85;
+    --border: #e1e6f0; --accent: #4f46e5; --accent-hover: #4338ca;
+    --ok-bg: #e7f7ee; --ok: #157347;
+    --wait-bg: #fff4dd; --wait: #9a6700;
+    --fail-bg: #fdeaea; --fail: #b42318;
+    --shadow: 0 1px 3px rgba(20, 30, 60, 0.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1420; --card: #181f31; --text: #e8ecf5; --muted: #95a2bd;
+      --border: #28314a; --accent: #7c75ff; --accent-hover: #968fff;
+      --ok-bg: #12301f; --ok: #5fd491;
+      --wait-bg: #33280f; --wait: #f0c14b;
+      --fail-bg: #3a1a1a; --fail: #ff8a80;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 40px 20px 60px; }
+  header h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: -0.5px; }
+  header p { margin: 0 0 28px; color: var(--muted); }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 22px; box-shadow: var(--shadow);
+  }
+  label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  input, textarea {
+    width: 100%; padding: 11px 12px; margin-bottom: 16px;
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--bg); color: var(--text); font: inherit;
+  }
+  input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  textarea { resize: vertical; min-height: 84px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button {
+    font: inherit; cursor: pointer; border: none; border-radius: 10px;
+    padding: 11px 20px; font-weight: 600;
+  }
+  .primary { background: var(--accent); color: #fff; }
+  .primary:hover:not(:disabled) { background: var(--accent-hover); }
+  .primary:disabled { opacity: 0.6; cursor: not-allowed; }
+  .ghost {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    padding: 7px 12px; font-size: 13px; font-weight: 500;
+  }
+  .ghost:hover { color: var(--text); }
+  #formMsg { color: var(--fail); font-size: 14px; }
+  h2 { font-size: 18px; margin: 34px 0 14px; }
+  .empty { color: var(--muted); text-align: center; padding: 28px 10px; }
+  .job { margin-bottom: 14px; }
+  .job-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .job-title { font-weight: 700; font-size: 16px; word-break: break-word; }
+  .badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+  .badge.completed { background: var(--ok-bg); color: var(--ok); }
+  .badge.pending, .badge.processing { background: var(--wait-bg); color: var(--wait); }
+  .badge.failed { background: var(--fail-bg); color: var(--fail); }
+  .job-desc { color: var(--muted); font-size: 14px; margin: 4px 0 0; word-break: break-word; }
+  .prompt {
+    margin: 14px 0 10px; padding: 12px 14px; border-radius: 10px;
+    background: var(--bg); border: 1px solid var(--border); font-size: 14px; word-break: break-word;
+  }
+  .prompt small { display: block; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
+  .job img { display: block; width: 100%; max-width: 260px; border-radius: 10px; margin-top: 12px; }
+  .note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .failmsg { color: var(--fail); font-size: 14px; margin-top: 10px; }
+  .spinner {
+    display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px;
+    border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
+<div class="wrap">
+  <header>
+    <h1>ProductPix</h1>
+    <p>Describe a product and AI turns it into an image prompt and a ready-to-use product image.</p>  </header>
 
-<h1>AI Content Generation Engine</h1>
+  <form id="generateForm" class="card">
+    <label for="product_name">Product name</label>
+    <input type="text" id="product_name" maxlength="120" placeholder="e.g. Ceramic coffee mug" required>
 
-<form id="generateForm">
-  <label>Product Name</label>
-  <input type="text" id="product_name" required>
+    <label for="description">Short description</label>
+    <textarea id="description" maxlength="600" placeholder="e.g. Handmade blue mug, matte finish, holds 350 ml" required></textarea>
 
-  <label>Short Description</label>
-  <textarea id="description" rows="3" required></textarea>
+    <div class="row">
+      <button type="submit" id="submitBtn" class="primary">Generate prompt</button>
+      <button type="button" id="exampleBtn" class="ghost">Try an example</button>
+      <span id="formMsg" role="alert"></span>
+    </div>
+  </form>
 
-  <button type="submit">Generate</button>
-</form>
-
-<h2>Jobs</h2>
-<div id="jobsList">Loading...</div>
+  <h2>Your jobs</h2>
+  <div id="jobsList"></div>
+</div>
 
 <script>
-async function fetchJobs() {
-  const res = await fetch('/jobs');
-  const jobs = await res.json();
-  const container = document.getElementById('jobsList');
+  const KEY = "acge_my_jobs";
+  let timer = null;
 
-  if (jobs.length === 0) {
-    container.innerHTML = "<p>No jobs yet.</p>";
-    return;
+  function getMine() {
+    try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { return []; }
+  }
+  function addMine(id) {
+    const ids = [id, ...getMine().filter(x => x !== id)].slice(0, 30);
+    try { localStorage.setItem(KEY, JSON.stringify(ids)); } catch (e) {}
   }
 
-  container.innerHTML = jobs.map(job => `
-    <div class="job">
-      <strong>${job.product_name}</strong><br>
-      <span class="status status-${job.status}">${job.status}</span>
-      ${job.prompt ? `<p><em>Prompt: ${job.prompt}</em></p>` : ''}
-      ${job.image_url ? `<img src="${job.image_url}" alt="result">` : ''}
-    </div>
-  `).join('');
-}
+  // Safe element builder: text goes in via textContent, never as HTML
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
 
-document.getElementById('generateForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const product_name = document.getElementById('product_name').value;
-  const description = document.getElementById('description').value;
+  const LABELS = { pending: "Queued", processing: "Generating", completed: "Done", failed: "Failed" };
 
-  await fetch('/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ product_name, description })
+  function renderJob(job) {
+    const card = el("div", "card job");
+
+    const top = el("div", "job-top");
+    top.appendChild(el("div", "job-title", job.product_name));
+    const badge = el("span", "badge " + job.status);
+    if (job.status === "pending" || job.status === "processing") {
+      badge.appendChild(el("span", "spinner"));
+    }
+    badge.appendChild(document.createTextNode(LABELS[job.status] || job.status));
+    top.appendChild(badge);
+    card.appendChild(top);
+
+    card.appendChild(el("p", "job-desc", job.description));
+
+    if (job.status === "completed" && job.prompt) {
+      const box = el("div", "prompt");
+      box.appendChild(el("small", "", "Generated prompt"));
+      box.appendChild(document.createTextNode(job.prompt));
+      card.appendChild(box);
+
+      const copyBtn = el("button", "ghost", "Copy prompt");
+      copyBtn.type = "button";
+      copyBtn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(job.prompt);
+          copyBtn.textContent = "Copied!";
+          setTimeout(() => (copyBtn.textContent = "Copy prompt"), 1500);
+        } catch (e) { copyBtn.textContent = "Copy failed"; }
+      });
+      card.appendChild(copyBtn);
+
+      if (job.image_url) {
+        const img = el("img");
+        img.src = job.image_url;
+        img.alt = "Generated image for " + job.product_name;        img.loading = "lazy";
+        card.appendChild(img);
+        card.appendChild(el("div", "note", "Image generated from the prompt via Pollinations.ai (may take a few seconds to load)."));      }
+    }
+
+    if (job.status === "failed") {
+      card.appendChild(el("div", "failmsg", "Something went wrong while generating this prompt. Please try again."));
+    }
+    return card;
+  }
+
+  function render(jobs) {
+    const list = document.getElementById("jobsList");
+    list.replaceChildren();
+    if (jobs.length === 0) {
+      list.appendChild(el("div", "empty", "No jobs yet. Fill in the form above and generate your first prompt."));
+      return;
+    }
+    jobs.forEach(job => list.appendChild(renderJob(job)));
+  }
+
+  async function refresh() {
+    clearTimeout(timer);
+    try {
+      const res = await fetch("/jobs");
+      if (!res.ok) throw new Error("bad response");
+      const all = await res.json();
+      const ids = new Set(getMine());
+      const jobs = all.filter(j => ids.has(j.id));
+      render(jobs);
+      // keep polling only while something is still running
+      if (jobs.some(j => j.status === "pending" || j.status === "processing")) {
+        timer = setTimeout(refresh, 2000);
+      }
+    } catch (e) {
+      timer = setTimeout(refresh, 5000);
+    }
+  }
+
+  document.getElementById("generateForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById("submitBtn");
+    const msg = document.getElementById("formMsg");
+    msg.textContent = "";
+    btn.disabled = true;
+    btn.textContent = "Submitting...";
+    try {
+      const res = await fetch("/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_name: document.getElementById("product_name").value.trim(),
+          description: document.getElementById("description").value.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      addMine(data.job_id);
+      document.getElementById("generateForm").reset();
+      refresh();
+    } catch (err) {
+      msg.textContent = err.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Generate prompt";
+    }
   });
 
-  document.getElementById('generateForm').reset();
-  fetchJobs();
-});
+  document.getElementById("exampleBtn").addEventListener("click", () => {
+    document.getElementById("product_name").value = "Ceramic coffee mug";
+    document.getElementById("description").value = "Handmade blue mug with a matte finish, holds 350 ml, perfect for morning coffee";
+  });
 
-fetchJobs();
-setInterval(fetchJobs, 3000);
+  refresh();
 </script>
-
 </body>
 </html>

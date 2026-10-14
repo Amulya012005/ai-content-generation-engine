@@ -1,6 +1,7 @@
 import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import quote
 
 import requests
 from flask import Flask, request, jsonify, render_template
@@ -72,13 +73,9 @@ def generate_prompt_with_llm(product_name, description):
     return data["choices"][0]["message"]["content"].strip()
 
 
-def generate_image_mock(prompt):
-    """
-    Mocked image generation - returns a placeholder image.
-    (Assignment explicitly allows mocking this step.)
-    """
-    seed = abs(hash(prompt)) % 1000
-    return f"https://picsum.photos/seed/{seed}/512/512"
+def generate_image(prompt):
+    """Build a Pollinations.ai URL; the browser loads the image from it."""
+    return f"https://image.pollinations.ai/prompt/{quote(prompt)}?width=512&height=512&model=flux&nologo=true"
 
 
 def process_job(job_id, product_name, description):
@@ -90,7 +87,7 @@ def process_job(job_id, product_name, description):
         conn.commit()
 
         prompt = generate_prompt_with_llm(product_name, description)
-        image_url = generate_image_mock(prompt)
+        image_url = generate_image(prompt)
 
         cur.execute(
             "UPDATE jobs SET status = %s, prompt = %s, image_url = %s WHERE id = %s",
