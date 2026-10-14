@@ -5,6 +5,9 @@ from urllib.parse import quote
 
 import requests
 from flask import Flask, request, jsonify, render_template
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from werkzeug.middleware.proxy_fix import ProxyFix
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
@@ -12,6 +15,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
+# Render sits behind a proxy; this makes the limiter see the visitor's real IP
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
+
+limiter = Limiter(get_remote_address, app=app, storage_uri="memory://")
 
 # Background workers so /generate returns immediately and jobs run asynchronously
 executor = ThreadPoolExecutor(max_workers=4)
@@ -19,6 +26,9 @@ executor = ThreadPoolExecutor(max_workers=4)
 DATABASE_URL = os.environ.get("DATABASE_URL")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
+
+MAX_NAME_LEN = 120
+MAX_DESC_LEN = 600
 
 
 def get_db():
@@ -106,19 +116,39 @@ def process_job(job_id, product_name, description):
         conn.close()
 
 
+def clean_text(value, max_len):
+    """Return a trimmed string, or None if it's missing, not text, or too long."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    if not value or len(value) > max_len:
+        return None
+    return value
+
+
+@app.errorhandler(429)
+def too_many_requests(e):
+    return jsonify({"error": "Too many requests. Please wait a minute and try again."}), 429
+
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
 
 
 @app.route("/generate", methods=["POST"])
+@limiter.limit("5 per minute;50 per day")
 def generate():
-    data = request.get_json(silent=True)
-    if not data or not data.get("product_name") or not data.get("description"):
-        return jsonify({"error": "product_name and description are required"}), 400
+    data = request.get_json(silent=True) or {}
 
-    product_name = data["product_name"]
-    description = data["description"]
+    product_name = clean_text(data.get("product_name"), MAX_NAME_LEN)
+    description = clean_text(data.get("description"), MAX_DESC_LEN)
+
+    if not product_name:
+        return jsonify({"error": f"product_name is required (max {MAX_NAME_LEN} characters)"}), 400
+    if not description:
+        return jsonify({"error": f"description is required (max {MAX_DESC_LEN} characters)"}), 400
+
     job_id = str(uuid.uuid4())
 
     conn = get_db()
@@ -167,8 +197,9 @@ def index():
     return render_template("index.html")
 
 
-# Create the table when the app starts (works locally and on Render)
-init_db()
+# Create the table when the app starts (skipped in tests, which don't use a database)
+if os.environ.get("TESTING") != "1":
+    init_db()
 
 if __name__ == "__main__":
     app.run(port=5000)
