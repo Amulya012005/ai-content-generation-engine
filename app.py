@@ -1,5 +1,7 @@
 import os
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+
 import requests
 from flask import Flask, request, jsonify, render_template
 import psycopg2
@@ -9,6 +11,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
+
+# Background workers so /generate returns immediately and jobs run asynchronously
+executor = ThreadPoolExecutor(max_workers=4)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
@@ -32,6 +37,8 @@ def init_db():
             created_at TIMESTAMP DEFAULT NOW()
         )
     """)
+    # Stores the failure reason when a job fails
+    cur.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS error TEXT")
     conn.commit()
     cur.close()
     conn.close()
@@ -73,29 +80,10 @@ def generate_image_mock(prompt):
     return f"https://picsum.photos/seed/{seed}/512/512"
 
 
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({"status": "ok"}), 200
-
-
-@app.route("/generate", methods=["POST"])
-def generate():
-    data = request.get_json()
-    if not data or "product_name" not in data or "description" not in data:
-        return jsonify({"error": "product_name and description are required"}), 400
-
-    product_name = data["product_name"]
-    description = data["description"]
-    job_id = str(uuid.uuid4())
-
+def process_job(job_id, product_name, description):
+    """Runs in a background thread: pending -> processing -> completed/failed."""
     conn = get_db()
     cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO jobs (id, product_name, description, status) VALUES (%s, %s, %s, %s)",
-        (job_id, product_name, description, "pending")
-    )
-    conn.commit()
-
     try:
         cur.execute("UPDATE jobs SET status = %s WHERE id = %s", ("processing", job_id))
         conn.commit()
@@ -109,15 +97,46 @@ def generate():
         )
         conn.commit()
     except Exception as e:
-        cur.execute("UPDATE jobs SET status = %s WHERE id = %s", ("failed", job_id))
+        conn.rollback()
+        cur.execute(
+            "UPDATE jobs SET status = %s, error = %s WHERE id = %s",
+            ("failed", str(e), job_id)
+        )
         conn.commit()
+    finally:
         cur.close()
         conn.close()
-        return jsonify({"error": str(e), "job_id": job_id}), 500
 
+
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"}), 200
+
+
+@app.route("/generate", methods=["POST"])
+def generate():
+    data = request.get_json(silent=True)
+    if not data or not data.get("product_name") or not data.get("description"):
+        return jsonify({"error": "product_name and description are required"}), 400
+
+    product_name = data["product_name"]
+    description = data["description"]
+    job_id = str(uuid.uuid4())
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO jobs (id, product_name, description, status) VALUES (%s, %s, %s, %s)",
+        (job_id, product_name, description, "pending")
+    )
+    conn.commit()
     cur.close()
     conn.close()
-    return jsonify({"job_id": job_id, "status": "completed"}), 201
+
+    # Hand the work to a background thread and respond right away
+    executor.submit(process_job, job_id, product_name, description)
+
+    return jsonify({"job_id": job_id, "status": "pending"}), 202
 
 
 @app.route("/jobs/<job_id>", methods=["GET"])
@@ -131,7 +150,6 @@ def get_job(job_id):
 
     if not job:
         return jsonify({"error": "job not found"}), 404
-
     return jsonify(dict(job)), 200
 
 
@@ -151,6 +169,8 @@ def index():
     return render_template("index.html")
 
 
+# Create the table when the app starts (works locally and on Render)
+init_db()
+
 if __name__ == "__main__":
-    init_db()
-    app.run(debug=True, port=5000)
+    app.run(port=5000)
