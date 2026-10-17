@@ -1,6 +1,6 @@
 # ProductPix: AI Product Image Generator
 
-![CI](https://github.com/Amulya012005/ai-content-generation-engine/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/Amulya012005/productpix/actions/workflows/ci.yml/badge.svg)
 
 A backend service that turns a product description into an image-generation prompt with an LLM, then into a product image. Jobs run asynchronously, so other software can submit work and poll for results.
 
@@ -65,8 +65,8 @@ Python, Flask, PostgreSQL (psycopg2), Groq API, Flask-Limiter, pytest, Docker, G
 ## Run locally
 
 ```bash
-git clone https://github.com/Amulya012005/ai-content-generation-engine.git
-cd ai-content-generation-engine
+git clone git clone https://github.com/Amulya012005/productpix.git
+cd productpix
 python -m venv venv
 venv\Scripts\activate        # Windows (use: source venv/bin/activate on Mac/Linux)
 pip install -r requirements-dev.txt
